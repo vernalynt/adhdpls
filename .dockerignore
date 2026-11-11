@@ -1,0 +1,9 @@
+.git
+.env
+secrets
+data
+tests
+docs
+__pycache__
+*.pyc
+README.md

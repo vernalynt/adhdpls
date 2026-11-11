@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADHDpls</title>
+<style>
+  :root {
+    --bg: #0b0b0c; --panel: #151517; --line: #2a2a2e; --text: #e8e8ea; --muted: #8a8a92;
+    --idea: #e0a030; --work: #3b9cf0; --home: #3ccf7a; --other: #b07af0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  h1 { margin: 0; font: 600 26px Georgia, serif; letter-spacing: -0.5px; }
+  .bar { display: flex; gap: 10px; margin-bottom: 12px; }
+  input, textarea, select, button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  #q { flex: 1; min-width: 0; }
+  button { cursor: pointer; }
+  button:hover { border-color: #55555c; }
+  .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .chip { border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+  .chip.on { background: #26262b; border-color: #77777f; }
+  .grid { column-width: 260px; column-gap: 14px; }
+  .card { break-inside: avoid; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 14px; position: relative; }
+  .card.idea { border-color: var(--idea); } .card.work { border-color: var(--work); } .card.home { border-color: var(--home); }
+  .meta { color: var(--muted); font-size: 12px; margin-bottom: 6px; display: flex; justify-content: space-between; gap: 8px; }
+  .tag { font-size: 12px; padding: 1px 7px; border-radius: 5px; background: #222; margin-right: 6px; cursor: pointer; }
+  .text { white-space: pre-wrap; word-break: break-word; font-weight: 600; margin-top: 6px; }
+  .item { display: flex; gap: 8px; align-items: center; padding: 4px 0; }
+  .item.done span { text-decoration: line-through; color: var(--muted); }
+  .item input { width: 18px; height: 18px; padding: 0; }
+  .progress { height: 4px; background: #26262b; border-radius: 4px; margin: 6px 0 8px; }
+  .progress i { display: block; height: 100%; background: var(--home); border-radius: 4px; }
+  .remind { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; display: flex; justify-content: space-between; font-size: 13px; }
+  .remind.soon { border-color: var(--idea); } .remind.past { color: var(--muted); }
+  .x { position: absolute; top: 6px; right: 8px; background: none; border: none; color: var(--muted); padding: 2px 6px; }
+  .card img { width: 100%; border-radius: 8px; margin-top: 8px; }
+  .card a { color: var(--work); word-break: break-all; }
+  dialog { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 14px; width: min(520px, 94vw); }
+  dialog::backdrop { background: rgba(0,0,0,.7); }
+  .row { display: flex; gap: 10px; margin-top: 10px; } .row > * { flex: 1; }
+  label { color: var(--muted); font-size: 12px; display: block; margin-top: 10px; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  .chip.new { border-style: dashed; }
+  .chip .del { margin-left: 8px; color: #ff7a7a; }
+  #newTag { border-radius: 999px; padding: 6px 12px; font-size: 13px; width: 150px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>ADHDpls</h1></header>
+  <div class="bar">
+    <input id="q" placeholder="Search ADHDpls" autocomplete="off">
+    <button id="sync" hidden title="Pull new screenshots from Immich">Sync screenshots</button>
+    <button id="add">+ Add</button>
+  </div>
+  <div class="tags" id="tags"></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>Nothing here yet. Hit + Add.</div>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <label>Tags (#list and #reminder change the card type)</label>
+    <div class="tags" id="catBox" style="margin:6px 0 0"></div>
+    <label id="textLabel">Text (you can also type #tags here)</label>
+    <textarea id="text" rows="3" style="width:100%"></textarea>
+    <div id="itemsBox" hidden>
+      <label>List items (one per line)</label>
+      <textarea id="items" rows="4" style="width:100%"></textarea>
+    </div>
+    <div id="remindBox" hidden>
+      <label>Remind me at</label>
+      <input type="datetime-local" id="remind" style="width:100%">
+    </div>
+    <label>Link (optional)</label>
+    <input id="url" style="width:100%" placeholder="https://">
+    <label>Images (optional: camera or gallery, each image becomes its own card)</label>
+    <input type="file" id="file" accept="image/png,image/jpeg,image/gif,image/webp,image/*" multiple style="width:100%">
+    <div class="row">
+      <button type="button" id="cancel">Cancel</button>
+      <button id="save" value="ok">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+let state = { tag: "", q: "" };
+const TAG_COLORS = { ideas: "idea", work: "work", home: "home" };
+const BUILTIN = ["list", "reminder"];  // these two decide how a card looks
+
+async function api(path, opts) {
+  const r = await fetch(path, opts && { ...opts, headers: { "Content-Type": "application/json" } });
+  return r.status === 204 ? null : r.json();
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function countdown(iso) {
+  const ms = new Date(iso) - new Date();
+  const past = ms < 0, a = Math.abs(ms);
+  const m = Math.round(a / 60000), h = Math.floor(m / 60), d = Math.floor(h / 24);
+  const txt = d >= 1 ? d + "d" : h >= 1 ? h + "h" : m + "m";
+  return { txt: past ? txt + " ago" : "in " + txt, past, soon: !past && ms < 36e5 * 24 };
+}
+
+function card(c) {
+  const color = c.tags.map(t => TAG_COLORS[t]).find(Boolean) || "";
+  const el = document.createElement("div");
+  el.className = "card " + color;
+  const tagHtml = c.tags.map(t => `<span class="tag" data-tag="${esc(t)}">#${esc(t)}</span>`).join("")
+    + `<span class="tag addtag">+ tag</span>`;
+  let body = "";
+  if (c.text) body += `<div class="text">${esc(c.text)}</div>`;
+  if (c.type === "list") {
+    const done = c.items.filter(i => i.done).length;
+    body += `<div class="progress"><i style="width:${c.items.length ? done / c.items.length * 100 : 0}%"></i></div>`;
+    body += c.items.map((i, n) => `<label class="item ${i.done ? "done" : ""}"><input type="checkbox" data-i="${n}" ${i.done ? "checked" : ""}><span>${esc(i.t)}</span></label>`).join("");
+  }
+  if (c.type === "reminder" && c.remind_at) {
+    const cd = countdown(c.remind_at);
+    const when = new Date(c.remind_at).toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    body += `<div class="remind ${cd.soon ? "soon" : ""} ${cd.past ? "past" : ""}"><span>${esc(when)}${c.on_calendar ? " (on calendar)" : ""}</span><span>${cd.txt}</span></div>`;
+  }
+  if (c.url) body += `<div style="margin-top:8px"><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.url)}</a></div>`;
+  if (c.image) body += `<a href="${esc(c.image.replace("size=preview", "size=fullsize"))}" target="_blank" rel="noopener"><img src="${esc(c.image)}" alt="" loading="lazy"></a>`;
+  const created = new Date(c.created_at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  el.innerHTML = `<button class="x" title="Delete">x</button><div class="meta"><span>${created}</span></div><div>${tagHtml}</div>${body}`;
+  el.querySelector(".x").onclick = async () => { await api("/api/cards/" + c.id, { method: "DELETE" }); load(); };
+  el.querySelectorAll(".tag[data-tag]").forEach(t => t.onclick = () => { state.tag = t.dataset.tag; state.unsorted = false; load(); });
+  el.querySelector(".addtag").onclick = () => {
+    // inline picker: tap a tag to add or remove it on this card
+    const row = document.createElement("div");
+    row.className = "tags"; row.style.margin = "8px 0 0";
+    (state.allTags || []).filter(t => !BUILTIN.includes(t)).forEach(t => {
+      const b = document.createElement("button");
+      b.className = "chip" + (c.tags.includes(t) ? " on" : ""); b.textContent = "#" + t;
+      b.onclick = async () => {
+        const next = c.tags.includes(t) ? c.tags.filter(x => x !== t) : [...c.tags, t];
+        await api("/api/cards/" + c.id, { method: "PATCH", body: JSON.stringify({ tags: next }) });
+        load();
+      };
+      row.appendChild(b);
+    });
+    el.querySelector(".addtag").replaceWith(row);
+  };
+  el.querySelectorAll(".item input").forEach(cb => cb.onchange = async () => {
+    c.items[+cb.dataset.i].done = cb.checked;
+    await api("/api/cards/" + c.id, { method: "PATCH", body: JSON.stringify({ items: c.items }) });
+    load();
+  });
+  return el;
+}
+
+async function load() {
+  const params = new URLSearchParams();
+  if (state.q) params.set("q", state.q);
+  if (state.tag) params.set("tag", state.tag);
+  if (state.type) params.set("type", state.type);
+  if (state.unsorted) params.set("unsorted", "1");
+  const [cards, tags] = await Promise.all([api("/api/cards?" + params), api("/api/tags")]);
+  const grid = $("#grid"); grid.innerHTML = "";
+  cards.forEach(c => grid.appendChild(card(c)));
+  $("#empty").hidden = cards.length > 0;
+  const bar = $("#tags"); bar.innerHTML = "";
+  const mk = (label, on, fn) => { const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = label; b.onclick = fn; bar.appendChild(b); };
+  mk("All", !state.tag && !state.type && !state.unsorted, () => { state.tag = ""; state.type = ""; state.unsorted = false; load(); });
+  mk("Needs sorting", state.unsorted, () => { state.unsorted = !state.unsorted; state.tag = ""; load(); });
+  tags.forEach(([t, n]) => {
+    mk("#" + t + " " + n, state.tag === t, () => { state.tag = state.tag === t ? "" : t; state.type = ""; state.unsorted = false; load(); });
+    if (state.edit && !BUILTIN.includes(t)) {
+      const b = bar.lastChild, x = document.createElement("span");
+      x.className = "del"; x.textContent = "x"; x.title = "Delete category (cards are kept)";
+      x.onclick = async e => {
+        e.stopPropagation();
+        if (confirm("Delete #" + t + "? Cards stay, they just lose this category.")) {
+          await api("/api/tags/" + encodeURIComponent(t), { method: "DELETE" });
+          if (state.tag === t) state.tag = "";
+          load();
+        }
+      };
+      b.appendChild(x);
+    }
+  });
+  mk("+", false, () => {
+    const inp = document.createElement("input");
+    inp.id = "newTag"; inp.placeholder = "new category"; inp.maxLength = 30;
+    bar.lastChild.replaceWith(inp); inp.focus();
+    const save = async () => {
+      if (inp.value.trim()) await api("/api/tags", { method: "POST", body: JSON.stringify({ name: inp.value }) });
+      load();
+    };
+    inp.onkeydown = e => { if (e.key === "Enter") save(); if (e.key === "Escape") load(); };
+    inp.onblur = save;
+  });
+  mk(state.edit ? "Done" : "Edit tags", false, () => { state.edit = !state.edit; load(); });
+  bar.lastChild.classList.add("new");
+  state.allTags = tags.map(t => t[0]);
+}
+
+$("#q").oninput = e => { state.q = e.target.value; load(); };
+let picked = new Set();
+function drawCats() {
+  const box = $("#catBox"); box.innerHTML = "";
+  (state.allTags || []).forEach(t => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip" + (picked.has(t) ? " on" : ""); b.textContent = "#" + t;
+    b.onclick = () => { picked.has(t) ? picked.delete(t) : picked.add(t); drawCats(); sync(); };
+    box.appendChild(b);
+  });
+}
+$("#add").onclick = () => { $("#form").reset(); picked = new Set(state.tag ? [state.tag] : []); drawCats(); sync(); $("#dlg").showModal(); };
+$("#cancel").onclick = () => $("#dlg").close();
+$("#text").oninput = sync;
+function sync() {
+  const typed = (($("#text").value.match(/#\w+/g)) || []).map(s => s.slice(1).toLowerCase());
+  const has = k => picked.has(k) || typed.includes(k);
+  $("#itemsBox").hidden = !has("list");
+  $("#remindBox").hidden = !has("reminder");
+}
+async function uploadFile(file) {
+  const fd = new FormData(); fd.append("file", file);
+  const r = await fetch("/api/upload", { method: "POST", body: fd });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error || "Upload failed");
+  return d.url;
+}
+
+// Upload each image and make one card per image. Returns how many failed.
+async function addImageCards(files, base) {
+  let failed = 0;
+  for (const [i, f] of [...files].entries()) {
+    try {
+      const url = await uploadFile(f);
+      // text, list items and reminder only go on the first card
+      const body = i === 0 ? { ...base, image: url } : { tags: base.tags, image: url };
+      await api("/api/cards", { method: "POST", body: JSON.stringify(body) });
+    } catch (e) { failed++; alert(f.name + ": " + e.message); }
+  }
+  return failed;
+}
+
+$("#form").onsubmit = async () => {
+  const base = {
+    text: $("#text").value, url: $("#url").value, tags: [...picked],
+    items: $("#itemsBox").hidden ? [] : $("#items").value.split("\n"),
+    remind_at: $("#remindBox").hidden ? null : ($("#remind").value || null)
+  };
+  const files = $("#file").files;
+  if (files.length) await addImageCards(files, base);
+  else await api("/api/cards", { method: "POST", body: JSON.stringify(base) });
+  load();
+};
+
+// Drag images onto the page, or paste with Ctrl+V: each becomes an untagged image card.
+const imagesOf = list => [...list].filter(f => f.type.startsWith("image/"));
+window.addEventListener("dragover", e => e.preventDefault());
+window.addEventListener("drop", async e => {
+  const files = imagesOf(e.dataTransfer.files);
+  if (!files.length) return;
+  e.preventDefault();
+  await addImageCards(files, { tags: [] });
+  load();
+});
+window.addEventListener("paste", async e => {
+  if (["TEXTAREA", "INPUT"].includes(document.activeElement.tagName)) return;  // normal text paste
+  const files = imagesOf(e.clipboardData.files);
+  if (!files.length) return;
+  await addImageCards(files, { tags: [] });
+  load();
+});
+fetch("/api/immich/status").then(r => r.json()).then(s => { $("#sync").hidden = !s.configured; });
+$("#sync").onclick = async () => {
+  const b = $("#sync"); b.disabled = true; b.textContent = "Syncing...";
+  try {
+    const r = await fetch("/api/immich/sync", { method: "POST" });
+    const d = await r.json();
+    b.textContent = d.ok ? (d.imported + " new, " + d.scanned + " in Immich" + (d.more ? " (press again for more)" : "")) : "Sync failed";
+    if (!d.ok) alert(d.error);
+  } catch (e) { b.textContent = "Sync failed"; }
+  setTimeout(() => { b.disabled = false; b.textContent = "Sync screenshots"; }, 3000);
+  load();
+};
+load();
+setInterval(() => { if (!document.querySelector(".card .tags")) load(); }, 60000);  // skip while a tag picker is open
+</script>
+</body>
+</html>

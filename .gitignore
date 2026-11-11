@@ -1,0 +1,25 @@
+# Secrets and personal settings
+.env
+secrets/
+gcal*.json
+*.pem
+*.key
+
+# Your data
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

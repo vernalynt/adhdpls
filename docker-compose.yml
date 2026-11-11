@@ -1,0 +1,17 @@
+services:
+  adhdpls:
+    build: .
+    container_name: adhdpls
+    ports:
+      # Safe default: only this computer can reach it. To use it from your phone, set BIND_IP in .env
+      # to a private address (for example your Tailscale IP). Never publish it to the open internet,
+      # there is no login.
+      - "${BIND_IP:-127.0.0.1}:${PORT:-5055}:5055"
+    volumes:
+      - ./data:/data                 # adhdpls.db and your uploaded images
+      - ./secrets:/secrets:ro        # optional: gcal.json, only if you turn on Google Calendar
+    env_file:
+      - .env                         # copy .env.example to .env first
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach Immich running on the same machine
+    restart: unless-stopped
